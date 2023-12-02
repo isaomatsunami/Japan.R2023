@@ -1,0 +1,453 @@
+---
+title: "競艇選手の実力推定"
+output: html_notebook
+---
+
+ライブラリを読み込む。
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+# Macの文字化け対策
+theme_set( theme_bw(base_family = "HiraKakuProN-W3")) 
+```
+
+runif関数は、指定した範囲から無作為に数値を選んでくれる関数。
+```{r}
+runif(n = 1, min = 0, max = 100)
+```
+
+Aさんがrunifを1000回繰り返して得た数値の分布（一様分布）を確かめる。
+```{r}
+res <- data.frame( A = rep(0, times = 1000) )
+for(i in 1:1000){
+  res$A[i] <- runif(n = 1, min = 0, max = 100)
+}
+ggplot(data = res) +
+  geom_histogram( mapping = aes(x = A) )
+```
+A、B、Cの３人の場合でも、ggplot2のfacet_gridを使えば簡単。
+```{r}
+res <- data.frame(
+  A = rep(0, times = 1000),
+  B = rep(0, times = 1000),
+  C = rep(0, times = 1000)
+)
+for(i in 1:1000){
+  res$A[i] <- runif(n = 1, min = 0, max = 100)
+  res$B[i] <- runif(n = 1, min = 0, max = 100)
+  res$C[i] <- runif(n = 1, min = 0, max = 100)
+}
+
+ggplot( data = res %>% pivot_longer( cols = c("A","B","C") ) ) +
+  geom_histogram(mapping = aes(x = value)) +
+  facet_grid(~name)
+```
+この一様な分布を「ABCの値について何の予断も持っていない」ことだとみなす。
+
+いま、A > B > Cであることを知ったとし、この条件を満たしたものだけを採用する。
+```{r}
+res <- data.frame(
+  A = rep(0, times = 1000),
+  B = rep(0, times = 1000),
+  C = rep(0, times = 1000)
+)
+i = 1
+while( i <= 1000 ) {
+  a <- runif(n = 1, min = 0, max = 100)
+  b <- runif(n = 1, min = 0, max = 100)
+  c <- runif(n = 1, min = 0, max = 100)
+  if( a > b && b > c ) { # 採用する
+    res$A[i] <- a
+    res$B[i] <- b
+    res$C[i] <- c
+    i = i + 1
+  } else { # 不採用、やり直し
+    next
+  }
+}
+ggplot( data = res %>% pivot_longer( cols = c("A","B","C") ) ) +
+  geom_histogram(mapping = aes(x = value)) +
+  facet_grid(~name)
+```
+これがA>B>Cという情報から引き出せる推定値だと（都合のいい）解釈をする。
+
+この数値がテストの点数で、そのテストは平均60点、標準偏差15点だったとすると...
+```{r}
+res <- data.frame(
+  A = rep(0, times = 1000),
+  B = rep(0, times = 1000),
+  C = rep(0, times = 1000)
+)
+i = 1
+while( i <= 1000 ) {
+  a <- rnorm(n = 1, mean = 60, sd = 15)
+  b <- rnorm(n = 1, mean = 60, sd = 15)
+  c <- rnorm(n = 1, mean = 60, sd = 15)
+  # [0,100]の範囲外なら不採用
+  if (a < 0 || a > 100 || b < 0 || b > 100 || c < 0 || c > 100) next
+  if( a > b && b > c ) { # 採用する
+    res$A[i] <- a
+    res$B[i] <- b
+    res$C[i] <- c
+    i = i + 1
+  } else { # 不採用、やり直し
+    next
+  }
+}
+ggplot( data = res %>% pivot_longer( cols = c("A","B","C") ) ) +
+  geom_histogram(mapping = aes(x = value)) +
+  facet_grid(~name)
+```
+これが推定値だと受け入れられるかどうか？
+
+テスト・レースが２回行われ、第１回はA>B>C、第２回はB>A>Cとなり、順位が入れ替わったとする。
+A>BとB>Aは同時には成り立たない。そこで、A、B、Cは「本当の実力（潜在力）」のことで、実際の比較（テスト・レース）では調子の良し悪し（あるいは運）によってブレる、という恐ろしく都合のいい設定に話を変える。
+```{r}
+res <- data.frame(
+  A = rep(0, times = 1000),
+  B = rep(0, times = 1000),
+  C = rep(0, times = 1000)
+)
+i = 1
+while( i <= 1000 ) {
+  a <- runif(n = 1, min = 0, max = 100)
+  b <- runif(n = 1, min = 0, max = 100)
+  c <- runif(n = 1, min = 0, max = 100)
+  rand_for_1 <- rnorm(3, 0, 5) # １回目の３人の変動分
+  rand_for_2 <- rnorm(3, 0, 5) # ２回目の３人の変動分
+  if(
+      # 第１回
+      ( a + rand_for_1[1] > b + rand_for_1[2] && b + rand_for_1[2] > c + rand_for_1[3] ) &&
+      # 第２回
+      ( b + rand_for_2[2] > a + rand_for_2[1] && a + rand_for_2[1] > c + rand_for_2[3] )
+     ) { # 採用する
+    res$A[i] <- a
+    res$B[i] <- b
+    res$C[i] <- c
+    i = i + 1
+  } else { # 不採用、やり直し
+    next
+  }
+}
+ggplot( data = res %>% pivot_longer( cols = c("A","B","C") ) ) +
+  geom_histogram(mapping = aes(x = value)) +
+  facet_grid(~name)
+```
+このような計算（統計的モデリング）でABCの「実力」が推定できると受け入れられるかどうか？
+ただし、複雑な数式展開することなく、手元にある「知っていること」を推定に組み込むことができるのは統計的モデリングの魅力。
+
+さて、競艇はバブル経済期以来の第２次ブーム。競馬を抜く勢い。
+```{r}
+sales <- read_csv("./data/sale_type.csv")
+telephone <- sales %>% 
+  drop_na() %>%
+  nest( data = -year ) %>%
+  mutate( tele = map_dbl(data, function(df){sum(df$telephone)}) )
+ggplot(data = sales) +
+  geom_area( mapping = aes(x = year, y = gross / 1000000000000, fill = place) ) +
+  geom_line(data = telephone, mapping=aes(x = year, y = tele / 1000000000000)) +
+  labs(title="競艇の年間売上(2000-22)") +
+  xlab("年度") + ylab("兆円") + ylim(0,3)
+```
+
+## 競艇選手の実力推定
+
+2023/10/24から６日間、愛知・蒲郡で行われたボートレースダービーの結果は以下の通り。
+laneは枠順（1号艇から6号艇）、courseは進入順（1コースから6コース）、resultは着順を表す。numは選手の登録番号。motorとboatは抽選で割り当てられたモーター、ボートの番号。
+
+データ出典: BOATRACE振興会(https://www.boatrace.jp/owpc/pc/extra/data/download.html)
+```{r}
+race_data <- read_csv("./data/data.csv")
+race_data
+```
+ランク関数はJim Savage氏の解説(https://khakieconomics.github.io/2018/12/27/Ranked-random-coefficients-logit.html)を参照、最新のstanの文法に適うよう書き換えた。
+
+CmdStanRはstanを直接駆動する仕組み。
+```{r}
+# 導入後はリスタートする
+# install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+# install_cmdstan(cores = 10)
+# rebuild_cmdstan()
+```
+ライブラリを読み込む。
+```{r}
+library(cmdstanr)
+library(bayesplot)
+library(posterior)
+check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
+cmdstan_path()
+```
+
+stanモデルは以下の通り。
+```{stan, output.var="model01"}
+functions {
+  // 順位が観測される対数尤度を返す関数
+  real rank_logit_lpmf(array[] int rank_order, vector delta) {
+    vector[rows(delta)] tmp = delta[rank_order];
+    real out;
+    for(i in 1:(rows(tmp) - 1)) {
+      if(i == 1) {
+        out = tmp[1] - log_sum_exp(tmp);
+      } else {
+        out += tmp[i] - log_sum_exp(tmp[i:]);
+      }
+    }
+    return(out);
+  }
+}
+data {
+  int nRacer;
+  int nRace;
+  int nRow;
+  array[nRow] int race_order;
+  array[nRow] int racer_index;
+  array[nRace] int start_index;
+  array[nRace] int end_index;
+  array[nRace] int race_size;
+}
+parameters {
+  vector[nRacer] racers;
+  vector[nRow] mu;
+  real<lower = 1.0> sigma;
+}
+model {
+  racers ~ normal(0.0, 100.0);
+  mu ~ normal(0.0, sigma);
+  for(r in 1:nRace) {
+    vector[race_size[r]] utilities;  // 商品選択の潜在変数(utility)が起源
+    utilities = racers[ racer_index[start_index[r]:end_index[r]] ] +
+                mu[start_index[r]:end_index[r]];
+    race_order[start_index[r]:end_index[r]] ~ rank_logit(utilities);
+  }
+}
+```
+モデルに渡すため、インデックス表現などを計算する。
+```{r}
+racer_indice <- sort( unique( race_data$num ) )
+
+nested_ordered_data <- race_data %>%
+  nest( data = -c(race_id) ) %>%
+  mutate( ordered = map(data, function(df){
+    return(
+      df %>% arrange( result ) %>%
+        mutate( rank = row_number() ) %>%
+        mutate( racer_order = order(rank) )
+    )
+  }) ) %>%
+  select( -data ) %>%
+  mutate( size = map_int(ordered, nrow) ) %>%
+  mutate( start_index = cumsum(size) - size + 1 ) %>%
+  mutate( end_index = cumsum(size) )
+
+nRace <- nested_ordered_data %>% nrow()
+start_index <- nested_ordered_data$start_index
+end_index   <- nested_ordered_data$end_index
+race_sizes  <- nested_ordered_data$size
+
+ordered_data <- nested_ordered_data %>%
+  unnest( ordered ) %>%
+  mutate( racer_index = match(num, racer_indice) ) %>%
+  select( race_id, num, racer_index, lane, racer_order )
+
+ordered_data
+```
+stanにデータを渡し、パラメータを推定する。
+```{r}
+data_list <-list( # モデルに渡すデータ
+  nRacer      = length( racer_indice ),
+  nRace       = nRace,
+  nRow        = nrow( ordered_data ),
+  race_order  = ordered_data$racer_order,
+  racer_index = ordered_data$racer_index,
+  start_index = start_index,
+  end_index   = end_index,
+  race_size   = race_sizes
+)
+# モデルをコンパイル
+compiled_model <- cmdstan_model("./models/model01.stan")
+compiled_model$compile(force_recompile = T, cpp_options = list(stan_threads = TRUE))
+# 当てはめ
+fit <- compiled_model$sample(
+  data = data_list, 
+  seed = 999,
+  iter_warmup = 200,
+  iter_sampling = 1000,
+  chains = 2, parallel_chains = 2, threads_per_chain = 4,
+  max_treedepth = 20, 
+  refresh = 100 # print update every 100 iters
+)
+```
+（自己相関の収束を確認すること）
+sigmaの分布。
+```{r}
+fit$draws(c("sigma")) %>% mcmc_dens() + labs(title ="sigmaの分布")
+```
+競艇界のスーパースター・峰竜太(4320)のインデックス。
+```{r}
+match(4320, racer_indice)
+```
+選手（先頭４人）のパラメーターの分布は以下の通り。
+```{r}
+ggplot( data = fit$draws("racers") %>% as_draws_df() ) + 
+  geom_density(aes(x = `racers[1]`),  colour = "black", fill = "white", alpha = 0.3) +
+  geom_density(aes(x = `racers[2]`),  colour = "black", fill = "white", alpha = 0.3) +
+  geom_density(aes(x = `racers[3]`),  colour = "black", fill = "white", alpha = 0.3) +
+  geom_density(aes(x = `racers[27]`), colour = "blue", fill = "blue", alpha = 0.3) +
+  labs(title ="選手の「実力」", x = "racers")
+```
+### パラメータの多重化
+
+重回帰分析のように変数を増やすこともできる。
+多重線型性の問題も同様に起きるが、競艇は前検日に多くの要素を抽選で決める天然のランダム化比較試験（RCT）なので原理的には心配無用。
+
+たとえば、
+順位を決めるパラメータ　＝　選手の実力　＋　枠の影響力
+と想定した場合は以下のようになる。
+
+ただし、選手の実力と枠の影響力が「直交」していないとidentifiabilityが下がり、計算時間が爆発的に増える。つまり、データ次第で計算時間は変わり、時間がかかっていると十中八九、きれいな分布は描けない。
+```{stan, output.var="model02"}
+functions {
+  real rank_logit_lpmf(array[] int rank_order, vector delta) {
+    vector[rows(delta)] tmp = delta[rank_order];
+    real out;
+    for(i in 1:(rows(tmp) - 1)) {
+      if(i == 1) {
+        out = tmp[1] - log_sum_exp(tmp);
+      } else {
+        out += tmp[i] - log_sum_exp(tmp[i:]);
+      }
+    }
+    return(out);
+  }
+}
+data {
+  int nRacer;
+  int nRace;
+  int nRow;
+  array[nRow] int race_order;
+  array[nRow] int racer_index;
+  array[nRow] int lane_index;   // 追加
+  array[nRace] int start_index;
+  array[nRace] int end_index;
+  array[nRace] int race_size;
+}
+parameters {
+  vector[nRacer] racers;
+  vector[6] waku_coefs;   // 追加
+  vector[nRow] mu;
+  real<lower = 1.0> sigma;
+}
+model {
+  racers ~ normal(0.0, 100.0);
+  waku_coefs ~ normal(0.0, 20.0);
+  mu ~ normal(0.0, sigma);
+  for(r in 1:nRace) {
+    vector[race_size[r]] utilities;
+    utilities = racers[ racer_index[start_index[r]:end_index[r]] ] +
+                waku_coefs[ lane_index[start_index[r]:end_index[r]] ] + // 追加
+                mu[start_index[r]:end_index[r]];
+    race_order[start_index[r]:end_index[r]] ~ rank_logit(utilities);
+  }
+}
+```
+stanにデータを渡し、パラメータを推定する。(Don't try this at home)
+```{r}
+data_list <-list( # モデルに渡すデータ
+  nRacer      = length( racer_indice ),
+  nRace       = nRace,
+  nRow        = nrow( ordered_data ),
+  race_order  = ordered_data$racer_order,
+  racer_index = ordered_data$racer_index,
+  lane_index  = ordered_data$lane,  # 追加
+  start_index = start_index,
+  end_index   = end_index,
+  race_size   = race_sizes
+)
+# モデルをコンパイル
+compiled_model <- cmdstan_model("./models/model02.stan")
+compiled_model$compile(force_recompile = T, cpp_options = list(stan_threads = TRUE))
+# 当てはめ
+fit <- compiled_model$sample(
+  data = data_list, 
+  seed = 999,
+  iter_warmup = 200,
+  iter_sampling = 1000,
+  chains = 2, parallel_chains = 2, threads_per_chain = 4,
+  max_treedepth = 20, 
+  refresh = 100 # print update every 100 iters
+)
+```
+変数を６個追加しただけなのに計算時間は20時間に伸びる。このような場合、サンプリングは収束していない。
+
+# 注意点1
+
+A級上位選手とB級上位選手は同じ位置に配置されてしまう。競艇ではA級選手しか出場できない大会があり、トップ選手はB級選手と交流することが極めて稀。このため、２つのグループが重ねて配置されてしまう。
+ただし、同じ理由（対戦することが稀）で舟券の予想には影響がない。
+
+# 注意点2
+
+枠順の影響力を考えると、どの枠が１着になっても２着以降は若い枠になる確率が高いはずなのに、現実のデータでは３、４枠が１着になると４枠、５枠が２着になる確率が高い。これは、３、４枠が１着になる場合、内側の１、２枠がチキンレースになってターンに失敗していることが多く、後続の４、５枠が上位に食い込むことができるためだ。
+３、４枠が１位になる時だけ、４、５枠のパラメータがブーストされる「パラメータの干渉」をどうモデル化したらいいか？
+
+１着ごとの比率。
+```{r}
+ratio_rank_lanes <- read_csv("./data/rank_cases.csv") %>%
+  drop_na() %>%
+  nest( data = c(-rank1) ) %>%
+  mutate( n_rank = map_int(data, function(df){ sum(df$n) }) ) %>%
+  unnest( data ) %>%
+  mutate( ratio_in_rank1 = n / n_rank )
+d <- ratio_rank_lanes %>% select( rank1, rank2, rank3, ratio_in_rank1 )
+d
+```
+1枠が１着の場合、123が一番多い。
+```{r}
+ggplot(data = d %>% filter(rank1 == 1) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="１号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+
+```
+2枠が１着の場合、213が一番多い。
+```{r}
+ggplot(data = d %>% filter(rank1 == 2) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="２号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+```
+3枠が１着の場合、341が一番多い!
+```{r}
+ggplot(data = d %>% filter(rank1 == 3) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="３号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+```
+4枠が１着の場合、412が一番多いのはいいが、次は415。
+```{r}
+ggplot(data = d %>% filter(rank1 == 4) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="４号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+```
+５枠が１着の場合、512が一番多い。４、６枠が２着になる確率がやや高い。
+```{r}
+ggplot(data = d %>% filter(rank1 == 5) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="５号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+```
+6枠が１着の場合、512が一番多い!
+```{r}
+ggplot(data = d %>% filter(rank1 == 6) ) +
+  geom_tile( mapping = aes(x = rank2, y = rank3, fill = ratio_in_rank1) ) +
+  scale_fill_gradient(low = "white", high = "darkred") +
+  labs(x="２着になった枠", y="３着になった枠", title="６号艇が１着の場合") +
+  guides(fill =guide_legend(title = "比率") )
+```
+
